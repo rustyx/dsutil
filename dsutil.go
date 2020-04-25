@@ -60,7 +60,7 @@ func ensureRequiresArguments() {
 	switch {
 	case *project == "":
 		printUsageAndDie("Missing required option -project\n")
-	case *kind == "":
+	case *kind == "" && (flag.Args()[0] == "export" || flag.Args()[0] == "delete"):
 		printUsageAndDie("Missing required option -kind\n")
 	case len(flag.Args()) < 2 && (flag.Args()[0] == "export" || flag.Args()[0] == "import"):
 		printUsageAndDie("Missing required argument <filename>\n")
