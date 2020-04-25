@@ -1,6 +1,13 @@
 ## dsutil
 
-Usage:
+### Building:
+
+```
+go get github.com/rustyx/dsutil
+go build github.com/rustyx/dsutil
+```
+
+### Usage:
 
 ```
 dsutil [options] command <args>
@@ -21,3 +28,4 @@ dsutil [options] command <args>
   -to string
     	Filter < value (optional)
 ```
+
