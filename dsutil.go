@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
 	"log"
+	_ "net/http/pprof"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"cloud.google.com/go/datastore"
@@ -15,15 +18,20 @@ import (
 )
 
 var (
-	project = flag.String("project", "", "Google Cloud project name")
-	kind    = flag.String("kind", "", "DataStore table name")
-	filter  = flag.String("filter", "", "Filter field name (optional)")
-	from    = flag.String("from", "", "Filter >= value (optional)")
-	to      = flag.String("to", "", "Filter < value (optional)")
+	project     = flag.String("project", "", "Google Cloud project name")
+	kind        = flag.String("kind", "", "DataStore table name")
+	filter      = flag.String("filter", "", "Filter field name (optional)")
+	from        = flag.String("from", "", "Filter >= value (optional)")
+	to          = flag.String("to", "", "Filter < value (optional)")
+	skipdefault = flag.Bool("skipdefault", false, "skip default values (in 'convert' command)")
+	// httpPort    = flag.Int("pprof", 0, "pprof listen port (e.g. 8080)") // for debugging
 )
 
 func main() {
 	flag.Parse()
+	// if *httpPort > 0 {
+	// 	go func() { log.Fatal(http.ListenAndServe(fmt.Sprintf("localhost:%d", *httpPort), nil)) }()
+	// }
 	if len(flag.Args()) == 0 {
 		printUsageAndDie("Missing command argument\n")
 	}
@@ -38,8 +46,11 @@ func main() {
 	case "delete":
 		cmdDelete()
 		return
+	case "convert":
+		cmdConvert()
+		return
 	case "test":
-		doTest()
+		cmdTest()
 	default:
 		printUsageAndDie("Invalid command argument\n")
 	}
@@ -51,20 +62,25 @@ func printUsageAndDie(msg string) {
     export <filename>    - export records from DataStore
     import <filename>... - import records into DataStore
     delete               - delete records from DataStore
+    convert <in> <out>   - convert exported records from JSON to Go object format
 `)
 	flag.PrintDefaults()
 	os.Exit(1)
 }
 
 func ensureRequiresArguments() {
+	cmd := ""
+	if len(flag.Args()) > 0 {
+		cmd = flag.Args()[0]
+	}
 	switch {
-	case *project == "":
+	case *project == "" && cmd != "convert":
 		printUsageAndDie("Missing required option -project\n")
-	case *kind == "" && (flag.Args()[0] == "export" || flag.Args()[0] == "delete"):
+	case *kind == "" && (cmd == "export" || cmd == "delete"):
 		printUsageAndDie("Missing required option -kind\n")
-	case len(flag.Args()) < 2 && (flag.Args()[0] == "export" || flag.Args()[0] == "import"):
+	case len(flag.Args()) < 2 && (cmd == "export" || cmd == "import"):
 		printUsageAndDie("Missing required argument <filename>\n")
-	case len(flag.Args()) > 2 && flag.Args()[0] == "export":
+	case len(flag.Args()) > 2 && cmd == "export":
 		printUsageAndDie("Too many arguments for export command\n")
 	case *filter != "" && *from == "" && *to == "":
 		printUsageAndDie("Missing option -from and/or -to for -filter\n")
@@ -80,8 +96,7 @@ func cmdExport() {
 	outfile, err := os.OpenFile(flag.Args()[1], os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
 	check(err, flag.Args()[1])
 	defer outfile.Close()
-	ds, err := datastore.NewClient(context.Background(), *project)
-	check(err, "DataStore")
+	ds := connectDS()
 	defer ds.Close()
 	q := datastore.NewQuery(*kind)
 	if *from != "" {
@@ -112,8 +127,7 @@ func importFile(filename string) {
 	infile, err := os.Open(filename)
 	check(err, filename)
 	defer infile.Close()
-	ds, err := datastore.NewClient(context.Background(), *project)
-	check(err, "DataStore")
+	ds := connectDS()
 	defer ds.Close()
 	err = dsio.Import(ds, infile)
 	check(err, "ds.Import")
@@ -127,8 +141,7 @@ func check(err error, msg string) {
 
 func cmdDelete() {
 	ensureRequiresArguments()
-	ds, err := datastore.NewClient(context.Background(), *project)
-	check(err, "DataStore")
+	ds := connectDS()
 	defer ds.Close()
 	q := datastore.NewQuery(*kind)
 	if *from != "" {
@@ -157,16 +170,78 @@ func cmdDelete() {
 		}
 	}
 	if len(keys) > 0 {
-		err = ds.DeleteMulti(context.Background(), keys)
+		err := ds.DeleteMulti(context.Background(), keys)
 		check(err, "ds.DeleteMulti")
 	}
 	log.Printf("Deleted %v", n)
 }
 
-func doTest() {
+func cmdConvert() {
 	ensureRequiresArguments()
-	ds, err := datastore.NewClient(context.Background(), *project)
-	check(err, "DataStore")
+	if len(flag.Args()) != 3 {
+		printUsageAndDie("convert arguments should be <in> <out>\n")
+	}
+	in, err := os.Open(flag.Args()[1])
+	check(err, flag.Args()[1])
+	defer in.Close()
+	out, err := os.OpenFile(flag.Args()[2], os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	check(err, flag.Args()[2])
+	defer out.Close()
+	rbuf := bufio.NewScanner(in)
+	rbuf.Buffer(make([]byte, 32768), 1024*1024*1024)
+	wbuf := bufio.NewWriterSize(out, 32768)
+	defer wbuf.Flush()
+	inCh := make(chan []byte, 10)
+	outCh := make(chan dsio.Entity, 10)
+	errCh := make(chan error, 1)
+	werrCh := make(chan error, 1)
+	go dsio.Unmarshal(inCh, outCh, errCh)
+	go func() {
+		defer close(werrCh)
+		for rec := range outCh {
+			_, _ = wbuf.WriteString("{")
+			i := 0
+			for _, p := range rec.Properties {
+				if *skipdefault && (p.Value == "" || p.Value == int64(0) || p.Value == float64(0.0) || p.Value == false) {
+					continue
+				}
+				if i > 0 {
+					_, _ = wbuf.WriteString(",")
+				}
+				i++
+				value := p.Value
+				switch v := value.(type) {
+				case string:
+					value = strconv.Quote(v)
+				case time.Time:
+					value = v.Format(`"2006-01-02T15:04:05.000Z"`)
+					// case []byte: // TODO
+				}
+				_, err = wbuf.WriteString(fmt.Sprintf("%s:%v", p.Name, value))
+				if err != nil {
+					werrCh <- err
+				}
+			}
+			_, _ = wbuf.WriteString("},\n")
+		}
+	}()
+outer:
+	for rbuf.Scan() {
+		select {
+		case inCh <- append([]byte{}, rbuf.Bytes()...): // make a copy
+		case err = <-errCh:
+			break outer
+		}
+	}
+	close(inCh)
+	check(err, "parse")
+	check(<-errCh, "parse")
+	check(<-werrCh, "write")
+}
+
+func cmdTest() {
+	ensureRequiresArguments()
+	ds := connectDS()
 	defer ds.Close()
 	key := datastore.IDKey("Test", 0, nil)
 	dt, err := time.Parse("20060102-15:04:05.000", "20060102-15:04:05.012")
@@ -196,4 +271,12 @@ func doTest() {
 	err = ds.Get(context.Background(), key, &ent)
 	check(err, "ds get")
 	log.Printf("get=%v", &ent)
+}
+
+func connectDS() *datastore.Client {
+	host := os.Getenv("DATASTORE_EMULATOR_HOST")
+	fmt.Printf("DATASTORE_EMULATOR_HOST=%q\n", host)
+	ds, err := datastore.NewClient(context.Background(), *project)
+	check(err, "DataStore")
+	return ds
 }

@@ -15,3 +15,5 @@
 # vendor/
 *.gz
 *.json
+*.bak
+*.ds
