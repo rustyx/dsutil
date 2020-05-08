@@ -117,7 +117,7 @@ func Marshal(inCh <-chan Entity, outCh chan<- []byte, errCh chan<- error) {
 func prepareForMarshal(value interface{}) interface{} {
 	tm, ok := value.(time.Time)
 	if ok {
-		return tm.UTC() // DataStore does not store timezone
+		return tm.UTC().Format("2006-01-02T15:04:05.000Z") // DataStore does not store timezone
 	}
 	return value
 }
