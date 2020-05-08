@@ -1,4 +1,4 @@
-## dsutil
+## `dsutil` - Google Cloud DataStore import/export utilities
 
 ### Building:
 
@@ -16,6 +16,7 @@ dsutil [options] command <args>
     export <filename>    - export records from DataStore
     import <filename>... - import records into DataStore
     delete               - delete records from DataStore
+    convert <in> <out>   - convert exported records from JSON to Go object notation
 
   -project string
     	Google Cloud project name

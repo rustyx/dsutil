@@ -62,7 +62,7 @@ func printUsageAndDie(msg string) {
     export <filename>    - export records from DataStore
     import <filename>... - import records into DataStore
     delete               - delete records from DataStore
-    convert <in> <out>   - convert exported records from JSON to Go object format
+    convert <in> <out>   - convert exported records from JSON to Go object notation
 `)
 	flag.PrintDefaults()
 	os.Exit(1)
