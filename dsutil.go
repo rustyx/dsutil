@@ -5,11 +5,16 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	_ "net/http/pprof"
 	"os"
+	"os/user"
 	"path/filepath"
+	"regexp"
+	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/datastore"
@@ -18,11 +23,13 @@ import (
 )
 
 var (
-	project     = flag.String("project", "", "Google Cloud project name")
-	kind        = flag.String("kind", "", "DataStore table name")
+	project     = flag.String("project", "", "Google Cloud project name (deduced if not provided)")
+	kind        = flag.String("kind", "", "DataStore table name (required for 'export')")
 	filter      = flag.String("filter", "", "Filter field name (optional)")
 	from        = flag.String("from", "", "Filter >= value (optional)")
 	to          = flag.String("to", "", "Filter < value (optional)")
+	order       = flag.String("order", "", "Order by field name, use '-' prefix for descending order (optional)")
+	limit       = flag.Int("limit", 0, "Max number of records to export (optional)")
 	skipdefault = flag.Bool("skipdefault", false, "skip default values (in 'convert' command)")
 	// httpPort    = flag.Int("pprof", 0, "pprof listen port (e.g. 8080)") // for debugging
 )
@@ -73,6 +80,9 @@ func ensureRequiresArguments() {
 	if len(flag.Args()) > 0 {
 		cmd = flag.Args()[0]
 	}
+	if *project == "" {
+		*project = deduceProjectID()
+	}
 	switch {
 	case *project == "" && cmd != "convert":
 		printUsageAndDie("Missing required option -project\n")
@@ -104,6 +114,17 @@ func cmdExport() {
 	}
 	if *to != "" {
 		q = q.Filter(fmt.Sprintf("%s<", *filter), *to)
+	}
+	if *order != "" {
+		if *order == "1" {
+			*order = *filter
+		} else if *order == "-1" {
+			*order = "-" + *filter
+		}
+		q = q.Order(*order)
+	}
+	if *limit != 0 {
+		q = q.Limit(*limit)
 	}
 	it := ds.Run(context.Background(), q)
 	err = dsio.Export(it, outfile)
@@ -279,4 +300,38 @@ func connectDS() *datastore.Client {
 	ds, err := datastore.NewClient(context.Background(), *project)
 	check(err, "DataStore")
 	return ds
+}
+
+func deduceProjectID() string {
+	active := strings.Trim(getConfigFile("gcloud/active_config"), " \t\r\n")
+	if active == "" {
+		active = "default"
+	}
+	cfg := getConfigFile("gcloud/configurations/config_" + active)
+	re := regexp.MustCompile(`(?s)\[core\].*?\bproject = (\S+)`)
+	m := re.FindStringSubmatch(cfg)
+	if m != nil {
+		return m[1]
+	}
+	return ""
+}
+
+func getConfigFile(s string) string {
+	var b []byte
+	if runtime.GOOS == "windows" {
+		b, _ = ioutil.ReadFile(filepath.Join(os.Getenv("APPDATA"), s))
+	} else {
+		b, _ = ioutil.ReadFile(filepath.Join(guessUnixHomeDir(), ".config", s))
+	}
+	return string(b)
+}
+
+func guessUnixHomeDir() string {
+	if v := os.Getenv("HOME"); v != "" {
+		return v
+	}
+	if u, err := user.Current(); err == nil {
+		return u.HomeDir
+	}
+	return ""
 }
