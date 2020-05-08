@@ -90,7 +90,7 @@ func Unmarshal(inCh <-chan []byte, outCh chan<- Entity, errCh chan<- error) {
 		}
 		err := json.Unmarshal(b, &e)
 		if err != nil {
-			errCh <- fmt.Errorf("line %d JSON Unmarshal error: %v", linenr, err)
+			errCh <- fmt.Errorf("line %d JSON Unmarshal error: %v. Line: %v", linenr, err, string(b))
 			return
 		}
 		if len(e.Fields) > 0 {
@@ -99,6 +99,7 @@ func Unmarshal(inCh <-chan []byte, outCh chan<- Entity, errCh chan<- error) {
 				fields[f.idx] = f
 				fieldtypes[f.Name] = f.Type
 			}
+			e.Row = nil
 		}
 		if e.Key == "" || len(e.Row) == 0 {
 			continue
@@ -154,6 +155,9 @@ func (v *valueWrapper) UnmarshalJSON(b []byte) (err error) {
 		}
 	default:
 		err = fmt.Errorf("Unsupported data type '%s'", v.typ)
+	}
+	if err != nil {
+		err = fmt.Errorf("Unable to unmarshal '%v' as %v", string(b), v.typ)
 	}
 	return
 }
