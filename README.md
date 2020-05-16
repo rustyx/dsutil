@@ -1,4 +1,6 @@
-## `dsutil` - Google Cloud DataStore import/export utilities
+## dsutil - Google Cloud DataStore import/export utilities
+
+[![Build Status](https://travis-ci.com/rustyx/dsutil.svg?branch=master)](https://travis-ci.com/rustyx/dsutil)
 
 ### Building:
 
