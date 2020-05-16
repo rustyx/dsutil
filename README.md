@@ -21,14 +21,15 @@ dsutil [options] command <args>
     convert <in> <out>   - convert exported records from JSON to Go object notation
 
   -project string
-    	Google Cloud project name
+    	Google Cloud project name (deduced if not provided)
   -kind string
-    	DataStore table name
+    	DataStore table name (required for export)
   -filter string
     	Filter field name (optional)
   -from string
     	Filter >= value (optional)
   -to string
     	Filter < value (optional)
+  -eq string
+    	Filter = value (optional)
 ```
-
