@@ -28,6 +28,7 @@ var (
 	filter      = flag.String("filter", "", "Filter field name (optional)")
 	from        = flag.String("from", "", "Filter >= value (optional)")
 	to          = flag.String("to", "", "Filter < value (optional)")
+	eq          = flag.String("eq", "", "Filter = value (optional)")
 	order       = flag.String("order", "", "Order by field name, use '-' prefix for descending order (optional)")
 	limit       = flag.Int("limit", 0, "Max number of records to export (optional)")
 	skipdefault = flag.Bool("skipdefault", false, "skip default values (in 'convert' command)")
@@ -86,14 +87,14 @@ func ensureRequiresArguments() {
 	switch {
 	case *project == "" && cmd != "convert":
 		printUsageAndDie("Missing required option -project\n")
-	case *kind == "" && (cmd == "export" || cmd == "delete"):
+	case *kind == "" && cmd == "export":
 		printUsageAndDie("Missing required option -kind\n")
 	case len(flag.Args()) < 2 && (cmd == "export" || cmd == "import"):
 		printUsageAndDie("Missing required argument <filename>\n")
 	case len(flag.Args()) > 2 && cmd == "export":
 		printUsageAndDie("Too many arguments for export command\n")
-	case *filter != "" && *from == "" && *to == "":
-		printUsageAndDie("Missing option -from and/or -to for -filter\n")
+	case *filter != "" && *from == "" && *to == "" && *eq == "":
+		printUsageAndDie("Missing option -from, -to or -eq for -filter\n")
 	case *filter == "" && *from != "":
 		printUsageAndDie("Missing option -filter for -from\n")
 	case *filter == "" && *to != "":
@@ -114,6 +115,9 @@ func cmdExport() {
 	}
 	if *to != "" {
 		q = q.Filter(fmt.Sprintf("%s<", *filter), *to)
+	}
+	if *eq != "" {
+		q = q.Filter(fmt.Sprintf("%s=", *filter), *eq)
 	}
 	if *order != "" {
 		if *order == "1" {
@@ -150,7 +154,7 @@ func importFile(filename string) {
 	defer infile.Close()
 	ds := connectDS()
 	defer ds.Close()
-	err = dsio.Import(ds, infile)
+	err = dsio.Import(infile, ds)
 	check(err, "ds.Import")
 }
 
@@ -164,12 +168,35 @@ func cmdDelete() {
 	ensureRequiresArguments()
 	ds := connectDS()
 	defer ds.Close()
+	if *filter != "" && len(flag.Args()) > 1 {
+		printUsageAndDie("'delete' supports -filter OR input file(s), not both\n")
+	}
+	if len(flag.Args()) > 1 {
+		for _, ff := range flag.Args()[1:] {
+			filenames, err := filepath.Glob(ff)
+			check(err, "Glob")
+			for _, f := range filenames {
+				deleteFromFile(f, ds)
+			}
+		}
+		return
+	}
+	if *kind == "" {
+		printUsageAndDie("Missing required option -kind\n")
+	}
+	log.Printf("Deleting entities from %s", *kind)
 	q := datastore.NewQuery(*kind)
 	if *from != "" {
+		log.Printf("where %s >= %v", *filter, *from)
 		q = q.Filter(fmt.Sprintf("%s>=", *filter), *from)
 	}
 	if *to != "" {
+		log.Printf("where %s < %v", *filter, *to)
 		q = q.Filter(fmt.Sprintf("%s<", *filter), *to)
+	}
+	if *eq != "" {
+		log.Printf("where %s = %v", *filter, *eq)
+		q = q.Filter(fmt.Sprintf("%s=", *filter), *eq)
 	}
 	q.KeysOnly()
 	it := ds.Run(context.Background(), q)
@@ -195,6 +222,40 @@ func cmdDelete() {
 		check(err, "ds.DeleteMulti")
 	}
 	log.Printf("Deleted %v", n)
+}
+
+func deleteFromFile(filename string, ds *datastore.Client) {
+	infile, err := os.Open(filename)
+	check(err, filename)
+	defer infile.Close()
+	log.Printf("Deleting entities from file %s", filename)
+	outCh := make(chan dsio.Entity, 10)
+	errCh := make(chan error, 1)
+	go func() {
+		defer close(errCh)
+		var keys []*datastore.Key
+		batchSize := 200
+		for rec := range outCh {
+			log.Printf("Deleting %v", rec.Key)
+			keys = append(keys, rec.Key)
+			if len(keys) >= batchSize {
+				err = ds.DeleteMulti(context.Background(), keys)
+				if err != nil {
+					errCh <- err
+					return
+				}
+				keys = nil
+			}
+		}
+		if len(keys) > 0 {
+			err = ds.DeleteMulti(context.Background(), keys)
+			if err != nil {
+				errCh <- err
+			}
+		}
+	}()
+	err = dsio.ImportFile(infile, outCh, errCh)
+	check(err, "ds.Delete")
 }
 
 func cmdConvert() {
@@ -296,24 +357,34 @@ func cmdTest() {
 
 func connectDS() *datastore.Client {
 	host := os.Getenv("DATASTORE_EMULATOR_HOST")
-	fmt.Printf("DATASTORE_EMULATOR_HOST=%q\n", host)
+	if host != "" {
+		log.Printf("DATASTORE_EMULATOR_HOST=%q", host)
+	}
 	ds, err := datastore.NewClient(context.Background(), *project)
 	check(err, "DataStore")
 	return ds
 }
 
-func deduceProjectID() string {
-	active := strings.Trim(getConfigFile("gcloud/active_config"), " \t\r\n")
-	if active == "" {
-		active = "default"
+func deduceProjectID() (res string) {
+	if os.Getenv("DATASTORE_EMULATOR_HOST") != "" {
+		res = os.Getenv("DATASTORE_PROJECT_ID")
 	}
-	cfg := getConfigFile("gcloud/configurations/config_" + active)
-	re := regexp.MustCompile(`(?s)\[core\].*?\bproject = (\S+)`)
-	m := re.FindStringSubmatch(cfg)
-	if m != nil {
-		return m[1]
+	if res == "" {
+		active := strings.Trim(getConfigFile("gcloud/active_config"), " \t\r\n")
+		if active == "" {
+			active = "default"
+		}
+		cfg := getConfigFile("gcloud/configurations/config_" + active)
+		re := regexp.MustCompile(`(?s)\[core\].*?\bproject = (\S+)`)
+		m := re.FindStringSubmatch(cfg)
+		if m != nil {
+			res = m[1]
+		}
 	}
-	return ""
+	if res != "" {
+		log.Printf("Using DataStore project %v", res)
+	}
+	return
 }
 
 func getConfigFile(s string) string {

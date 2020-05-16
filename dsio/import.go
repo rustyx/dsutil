@@ -13,16 +13,12 @@ import (
 	"cloud.google.com/go/datastore"
 )
 
-func Import(ds *datastore.Client, r io.Reader) (err error) {
-	rbuf := bufio.NewScanner(r)
-	rbuf.Buffer(make([]byte, 32768), 1024*1024*1024)
-	inCh := make(chan []byte, 10)
+// Import imports DataStore entities from the export file.
+func Import(r io.Reader, ds *datastore.Client) (err error) {
 	outCh := make(chan Entity, 10)
 	errCh := make(chan error, 1)
-	werrCh := make(chan error, 1)
-	go Unmarshal(inCh, outCh, errCh)
 	go func() {
-		defer close(werrCh)
+		defer close(errCh)
 		var keys []*datastore.Key
 		var rows []datastore.PropertyList
 		batchSize := 200
@@ -32,7 +28,7 @@ func Import(ds *datastore.Client, r io.Reader) (err error) {
 			if len(rows) >= batchSize {
 				_, err := ds.PutMulti(context.Background(), keys, rows)
 				if err != nil {
-					werrCh <- err
+					errCh <- err
 					return
 				}
 				keys, rows = nil, nil
@@ -41,21 +37,37 @@ func Import(ds *datastore.Client, r io.Reader) (err error) {
 		if len(rows) > 0 {
 			_, err := ds.PutMulti(context.Background(), keys, rows)
 			if err != nil {
-				werrCh <- err
+				errCh <- err
 			}
 		}
 	}()
+	err = ImportFile(r, outCh, errCh)
+	return
+}
+
+// ImportFile reads an export file, writing DataStore entities to outCh.
+// Closes outCh to signal EOF.
+// Waits until errCh is closed.
+// Returns the first encountered error.
+func ImportFile(r io.Reader, outCh chan Entity, errCh chan error) (err error) {
+	rbuf := bufio.NewScanner(r)
+	rbuf.Buffer(make([]byte, 32768), 1024*1024*1024)
+	inCh := make(chan []byte, 10)
+	ierrCh := make(chan error, 1)
+	go Unmarshal(inCh, outCh, ierrCh)
 outer:
 	for rbuf.Scan() {
 		select {
 		case inCh <- append([]byte{}, rbuf.Bytes()...): // make a copy
 		case err = <-errCh:
 			break outer
+		case err = <-ierrCh:
+			break outer
 		}
 	}
 	close(inCh)
-	err2 := <-errCh  // catch possible error at last line
-	err3 := <-werrCh // wait for completion
+	err2 := <-ierrCh // catch possible error at last line
+	err3 := <-errCh  // wait for completion
 	if err == nil {
 		err = err2
 	}
@@ -65,6 +77,8 @@ outer:
 	return
 }
 
+// Unmarshal processes export file lines, writing DataStore entities to outCh and any error to errCh.
+// Closes outCh and errCh before returning.
 func Unmarshal(inCh <-chan []byte, outCh chan<- Entity, errCh chan<- error) {
 	defer close(errCh)
 	defer close(outCh)
