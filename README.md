@@ -2,11 +2,10 @@
 
 [![Build Status](https://travis-ci.com/rustyx/dsutil.svg?branch=master)](https://travis-ci.com/rustyx/dsutil)
 
-### Building:
+### Installing:
 
 ```
 go get github.com/rustyx/dsutil
-go build github.com/rustyx/dsutil
 ```
 
 ### Usage:
@@ -15,10 +14,11 @@ go build github.com/rustyx/dsutil
 dsutil [options] command <args>
 
   command:
-    export <filename>    - export records from DataStore
-    import <filename>... - import records into DataStore
-    delete               - delete records from DataStore
-    convert <in> <out>   - convert exported records from JSON to Go object notation
+    export <filename>          - export records from DataStore
+    import <filename>...       - import records into DataStore
+    delete                     - delete records from DataStore
+    set <field> <type> <value> - update records in DataStore (type is: string, int, double)
+    convert <in> <out>         - convert exported records from JSON to Go object notation
 
   -project string
     	Google Cloud project name (deduced if not provided)

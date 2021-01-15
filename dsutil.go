@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -54,6 +55,9 @@ func main() {
 	case "delete":
 		cmdDelete()
 		return
+	case "set":
+		cmdSet()
+		return
 	case "convert":
 		cmdConvert()
 		return
@@ -67,16 +71,17 @@ func main() {
 func printUsageAndDie(msg string) {
 	fmt.Println(msg + `Usage: dsutil [options] command <args>
   command:
-    export <filename>    - export records from DataStore
-    import <filename>... - import records into DataStore
-    delete               - delete records from DataStore
-    convert <in> <out>   - convert exported records from JSON to Go object notation
+    export <filename>          - export records from DataStore
+    import <filename>...       - import records into DataStore
+    delete                     - delete records from DataStore
+    set <field> <type> <value> - update records in DataStore (type is: string, int, double)
+    convert <in> <out>         - convert exported records from JSON to Go object notation
 `)
 	flag.PrintDefaults()
 	os.Exit(1)
 }
 
-func ensureRequiresArguments() {
+func ensureRequiredArguments() {
 	cmd := ""
 	if len(flag.Args()) > 0 {
 		cmd = flag.Args()[0]
@@ -103,7 +108,7 @@ func ensureRequiresArguments() {
 }
 
 func cmdExport() {
-	ensureRequiresArguments()
+	ensureRequiredArguments()
 	outfile, err := os.OpenFile(flag.Args()[1], os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
 	check(err, flag.Args()[1])
 	defer outfile.Close()
@@ -136,7 +141,7 @@ func cmdExport() {
 }
 
 func cmdImport() {
-	ensureRequiresArguments()
+	ensureRequiredArguments()
 	for _, ff := range flag.Args()[1:] {
 		filenames, err := filepath.Glob(ff)
 		check(err, "Glob")
@@ -164,8 +169,75 @@ func check(err error, msg string) {
 	}
 }
 
+func cmdSet() {
+	ensureRequiredArguments()
+	ds := connectDS()
+	defer ds.Close()
+	if len(flag.Args()) != 4 {
+		printUsageAndDie("'set' requires 3 arguments: FieldName, type and Value\n")
+	}
+	if *kind == "" {
+		printUsageAndDie("Missing required option -kind\n")
+	}
+	var err error
+	key, valueType, valueStr := flag.Args()[1], flag.Args()[2], flag.Args()[3]
+	var value interface{}
+	switch valueType {
+	case "string":
+		value = valueStr
+	case "int":
+		value, err = strconv.Atoi(valueStr)
+		check(err, "Atoi")
+	case "double":
+		value, err = strconv.ParseFloat(valueStr, 64)
+		check(err, "ParseFloat")
+	default:
+		check(errors.New("Invalid type "+valueType), "parse type")
+	}
+	log.Printf("Updating %s, setting %s=%v", *kind, key, value)
+	q := datastore.NewQuery(*kind)
+	if *from != "" {
+		log.Printf("where %s >= %v", *filter, *from)
+		q = q.Filter(fmt.Sprintf("%s>=", *filter), *from)
+	}
+	if *to != "" {
+		log.Printf("where %s < %v", *filter, *to)
+		q = q.Filter(fmt.Sprintf("%s<", *filter), *to)
+	}
+	if *eq != "" {
+		log.Printf("where %s = %v", *filter, *eq)
+		q = q.Filter(fmt.Sprintf("%s=", *filter), *eq)
+	}
+	it := ds.Run(context.Background(), q)
+	n := 0
+	for {
+		rec := dsio.Entity{}
+		rec.Key, err = it.Next(&rec.Properties)
+		if err == iterator.Done {
+			break
+		}
+		check(err, "ds.Next")
+		found := false
+		for i, p := range rec.Properties {
+			if p.Name == key {
+				rec.Properties[i].Value = value
+				found = true
+				break
+			}
+		}
+		if !found {
+			rec.Properties = append(rec.Properties, datastore.Property{Name: key, Value: value})
+		}
+		// log.Printf("Updating %v", rec.Key)
+		_, err = ds.Put(context.Background(), rec.Key, &rec.Properties)
+		check(err, "ds.Put")
+		n++
+	}
+	log.Printf("Updated %v", n)
+}
+
 func cmdDelete() {
-	ensureRequiresArguments()
+	ensureRequiredArguments()
 	ds := connectDS()
 	defer ds.Close()
 	if *filter != "" && len(flag.Args()) > 1 {
@@ -259,7 +331,7 @@ func deleteFromFile(filename string, ds *datastore.Client) {
 }
 
 func cmdConvert() {
-	ensureRequiresArguments()
+	ensureRequiredArguments()
 	if len(flag.Args()) != 3 {
 		printUsageAndDie("convert arguments should be <in> <out>\n")
 	}
@@ -322,7 +394,7 @@ outer:
 }
 
 func cmdTest() {
-	ensureRequiresArguments()
+	ensureRequiredArguments()
 	ds := connectDS()
 	defer ds.Close()
 	key := datastore.IDKey("Test", 0, nil)
