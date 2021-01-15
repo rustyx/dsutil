@@ -66,6 +66,11 @@ outer:
 		}
 	}
 	close(inCh)
+	go func() {
+		for range outCh {
+			// drain outCh
+		}
+	}()
 	err2 := <-ierrCh // catch possible error at last line
 	err3 := <-errCh  // wait for completion
 	if err == nil {
