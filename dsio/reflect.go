@@ -64,7 +64,12 @@ type Reflector struct {
 	typ    reflect.Type
 	tmpptr reflect.Value
 	tmp    reflect.Value
-	fields map[string]*reflect.Value
+	fields map[string]*refField
+}
+
+type refField struct {
+	reflect.Value
+	setValue setOp
 }
 
 // NewReflector returns a new instance of Reflector.
@@ -76,7 +81,7 @@ func NewReflector(typePtr interface{}) *Reflector {
 		typ:    typ,
 		tmpptr: tmpptr,
 		tmp:    tmpptr.Elem(),
-		fields: make(map[string]*reflect.Value),
+		fields: make(map[string]*refField),
 	}
 }
 
@@ -89,12 +94,11 @@ func (r *Reflector) Reset() {
 func (r *Reflector) Set(field string, value interface{}) {
 	f, ok := r.fields[field]
 	if !ok {
-		ftmp := r.tmp.FieldByName(field)
-		f = &ftmp
-		r.fields[field] = f
+		ftmp := r.makeRefField(field)
+		r.fields[field] = ftmp
+		f = ftmp
 	}
-	v := reflect.ValueOf(value).Convert(f.Type())
-	f.Set(v)
+	f.setValue(&f.Value, value)
 }
 
 // MakeCopy returns a pointer to a copy of the reflected object.
@@ -102,4 +106,115 @@ func (r *Reflector) MakeCopy() interface{} {
 	vptr := reflect.New(r.typ)
 	vptr.Elem().Set(r.tmp)
 	return vptr.Interface()
+}
+
+// setAny() can set any value, the rest of the code below is for performance only.
+
+func (r *Reflector) makeRefField(name string) *refField {
+	f := &refField{Value: r.tmp.FieldByName(name)}
+	switch f.Kind() {
+	case reflect.Bool:
+		f.setValue = setBool
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		f.setValue = setInt
+	case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		f.setValue = setUInt
+	case reflect.Float32, reflect.Float64:
+		f.setValue = setFloat
+	case reflect.String:
+		f.setValue = setString
+	default:
+		f.setValue = setAny
+	}
+	return f
+}
+
+type setOp func(f *reflect.Value, value interface{})
+
+func setBool(f *reflect.Value, value interface{}) {
+	if v, ok := value.(bool); ok {
+		f.SetBool(v)
+		return
+	}
+	v := reflect.ValueOf(value).Convert(f.Type())
+	f.Set(v)
+}
+
+func setInt(f *reflect.Value, value interface{}) {
+	if v, ok := value.(int); ok {
+		f.SetInt(int64(v))
+	} else if v, ok := value.(int64); ok {
+		if v != 0 {
+			f.SetInt(v)
+		}
+	} else if v, ok := value.(int32); ok {
+		if v != 0 {
+			f.SetInt(int64(v))
+		}
+	} else if v, ok := value.(int16); ok {
+		if v != 0 {
+			f.SetInt(int64(v))
+		}
+	} else if v, ok := value.(int8); ok {
+		if v != 0 {
+			f.SetInt(int64(v))
+		}
+	} else {
+		v := reflect.ValueOf(value).Convert(f.Type())
+		f.Set(v)
+	}
+}
+
+func setUInt(f *reflect.Value, value interface{}) {
+	if v, ok := value.(uint64); ok {
+		if v != 0 {
+			f.SetUint(v)
+		}
+	} else if v, ok := value.(uint32); ok {
+		if v != 0 {
+			f.SetUint(uint64(v))
+		}
+	} else if v, ok := value.(uint16); ok {
+		if v != 0 {
+			f.SetUint(uint64(v))
+		}
+	} else if v, ok := value.(uint8); ok {
+		if v != 0 {
+			f.SetUint(uint64(v))
+		}
+	} else {
+		v := reflect.ValueOf(value).Convert(f.Type())
+		f.Set(v)
+	}
+}
+
+func setFloat(f *reflect.Value, value interface{}) {
+	if v, ok := value.(float64); ok {
+		if v != 0 {
+			f.SetFloat(v)
+		}
+	} else if v, ok := value.(float32); ok {
+		if v != 0 {
+			f.SetFloat(float64(v))
+		}
+	} else {
+		v := reflect.ValueOf(value).Convert(f.Type())
+		f.Set(v)
+	}
+}
+
+func setString(f *reflect.Value, value interface{}) {
+	if str, ok := value.(string); ok {
+		if str != "" {
+			f.SetString(str)
+		}
+	} else {
+		v := reflect.ValueOf(value).Convert(f.Type())
+		f.Set(v)
+	}
+}
+
+func setAny(f *reflect.Value, value interface{}) {
+	v := reflect.ValueOf(value).Convert(f.Type())
+	f.Set(v)
 }
