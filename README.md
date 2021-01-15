@@ -8,7 +8,7 @@
 go get github.com/rustyx/dsutil
 ```
 
-### Usage:
+### Command Line Usage:
 
 ```
 dsutil [options] command <args>
@@ -33,3 +33,28 @@ dsutil [options] command <args>
   -eq string
     	Filter = value (optional)
 ```
+
+### API Usage:
+
+It is possible to read an export file and process each entity programmatically.
+
+There are two interfaces: [`ImportFile`](https://pkg.go.dev/github.com/rustyx/dsutil/dsio#ImportFile), based on key-value pairs, and [`ImportFileReflect`](https://pkg.go.dev/github.com/rustyx/dsutil/dsio#ImportFileReflect), which is useful for ORM. Here's an example of how to load an export file into a PostgreSQL database using `go-pg` ORM API:
+
+```
+type MyEntity struct {
+	// columns ...
+}
+
+	inputFile := "my-export.ds"
+	log.Printf("Importing %v", inputFile)
+	insertFunc := func(rows []interface{}) error {
+		log.Printf("Inserting %v rows", len(rows))
+		_, err := pgdb.Model(rows...).Insert()
+		return err
+	}
+	if err := dsio.ImportFileReflect(inputFile, &MyEntity{}, insertFunc, 200); err != nil {
+		log.Fatalf("import %v failed: %v", inputFile, err)
+	}
+```
+
+For more documentation refer to [API Docs](https://pkg.go.dev/github.com/rustyx/dsutil/dsio).
