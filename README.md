@@ -42,17 +42,23 @@ There are two interfaces: [`ImportFile`](https://pkg.go.dev/github.com/rustyx/ds
 
 ```
 type MyEntity struct {
-	// columns ...
+	Id          int    `datastore:"-"`
+	SomeColumn  string `pg:"type:varchar(40)"`
+	SomeColumn2 string `pg:"type:varchar(40)"`
+	// . . .
 }
 
 	inputFile := "my-export.ds"
 	log.Printf("Importing %v", inputFile)
-	insertFunc := func(rows []interface{}) error {
-		log.Printf("Inserting %v rows", len(rows))
+	insertFunc := func(kind string, rows []interface{}) error {
+		log.Printf("Inserting %v %s(s)", len(rows), kind)
 		_, err := pgdb.Model(rows...).Insert()
 		return err
 	}
-	if err := dsio.ImportFileReflect(inputFile, &MyEntity{}, insertFunc, 200); err != nil {
+	modelMap := []dsio.ModelMapping{
+		{Kind: "MyEntity", TypePtr: &MyEntity{}, ImportFunc: insertFunc, BatchSize: 200},
+	}
+	if err := dsio.ImportFileReflect(inputFile, modelMap); err != nil {
 		log.Fatalf("import %v failed: %v", inputFile, err)
 	}
 ```

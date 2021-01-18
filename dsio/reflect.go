@@ -1,46 +1,67 @@
 package dsio
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"reflect"
 )
 
+// ModelMapping wraps a single data model type.
+type ModelMapping struct {
+	// DataStore entity kind (type name).
+	Kind string
+	// TypePtr must be a pointer to a struct of the desired type.
+	TypePtr interface{}
+	// ImportFunc will be called with a slice of pointers to objects of the given type.
+	ImportFunc ImportFuncType
+	// BatchSize defines the desired number of elements for a single ImportFunc call.
+	BatchSize int
+}
+
 // ImportFuncType is the type of the import callback.
-type ImportFuncType func(rows []interface{}) error
+type ImportFuncType func(kind string, rows []interface{}) error
 
 // ImportFileReflect imports a given .ds file using the provided type and import function.
-// typePtr must be a pointer to a struct of the desired type.
-// importFunc will be called with a slice of pointers to objects of the given type.
-// The slice will have at most batchSize elements.
-func ImportFileReflect(filename string, typePtr interface{}, importFunc ImportFuncType, batchSize int) error {
+func ImportFileReflect(filename string, modelMap []ModelMapping) error {
 	infile, err := os.Open(filename)
 	if err != nil {
 		return err
 	}
 	defer infile.Close()
-	return ImportStreamReflect(infile, typePtr, importFunc, batchSize)
+	return ImportStreamReflect(infile, modelMap)
 }
 
-// ImportStreamReflect imports a given .ds stream using the provided type and import function
-// typePtr must be a pointer to a struct of the desired type.
-// importFunc will be called with a slice of pointers to objects of the given type.
-// The slice will have at most batchSize elements.
-func ImportStreamReflect(r io.Reader, typePtr interface{}, importFunc ImportFuncType, batchSize int) (err error) {
+// ImportStreamReflect imports a given .ds stream using the provided type and import function mapping
+func ImportStreamReflect(r io.Reader, modelMap []ModelMapping) (err error) {
 	outCh := make(chan Entity, 10)
 	errCh := make(chan error, 1)
-	tmp := NewReflector(typePtr)
+	model := ModelMapping{}
+	var tmp *Reflector
 	go func() {
 		defer close(errCh)
 		var rows []interface{}
 		for e := range outCh {
+			if tmp == nil {
+				for _, m := range modelMap {
+					if m.Kind == e.Key.Kind {
+						tmp = NewReflector(m.TypePtr)
+						model = m
+						break
+					}
+				}
+				if tmp == nil {
+					errCh <- fmt.Errorf("Unknown type %q", e.Key.Kind)
+					return
+				}
+			}
 			tmp.Reset()
 			for _, p := range e.Properties {
 				tmp.Set(p.Name, p.Value)
 			}
 			rows = append(rows, tmp.MakeCopy())
-			if len(rows) >= batchSize {
-				err := importFunc(rows)
+			if len(rows) >= model.BatchSize {
+				err := model.ImportFunc(model.Kind, rows)
 				if err != nil {
 					errCh <- err
 					return
@@ -49,7 +70,7 @@ func ImportStreamReflect(r io.Reader, typePtr interface{}, importFunc ImportFunc
 			}
 		}
 		if len(rows) > 0 {
-			err := importFunc(rows)
+			err := model.ImportFunc(model.Kind, rows)
 			if err != nil {
 				errCh <- err
 			}
