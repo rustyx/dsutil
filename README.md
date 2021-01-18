@@ -2,13 +2,13 @@
 
 [![Build Status](https://travis-ci.com/rustyx/dsutil.svg?branch=master)](https://travis-ci.com/rustyx/dsutil)
 
-### Installing:
+### Installing
 
 ```
 go get github.com/rustyx/dsutil
 ```
 
-### Command Line Usage:
+### Command Line Usage
 
 ```
 dsutil [options] command <args>
@@ -34,7 +34,7 @@ dsutil [options] command <args>
     	Filter = value (optional)
 ```
 
-### API Usage:
+### API Usage
 
 It is possible to read an export file and process each entity programmatically.
 
