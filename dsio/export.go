@@ -13,11 +13,13 @@ import (
 	"google.golang.org/api/iterator"
 )
 
+// Entity wraps a DataStore entity including its key and all properties as key-value pairs.
 type Entity struct {
 	Key        *datastore.Key
 	Properties datastore.PropertyList
 }
 
+// Export exports the given DataStore entity iterator into the given stream.
 func Export(it *datastore.Iterator, w io.Writer) (err error) {
 	wbuf := bufio.NewWriterSize(w, 32768)
 	defer wbuf.Flush()
@@ -72,6 +74,7 @@ outer:
 	return
 }
 
+// Marshal marshals a stream of DataStore entities into a stream of byte arrays.
 func Marshal(inCh <-chan Entity, outCh chan<- []byte, errCh chan<- error) {
 	defer close(errCh)
 	defer close(outCh)
