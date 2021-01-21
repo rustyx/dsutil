@@ -3,6 +3,7 @@ package dsio
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"reflect"
 )
@@ -118,8 +119,13 @@ func (r *Reflector) Set(field string, value interface{}) {
 		ftmp := r.makeRefField(field)
 		r.fields[field] = ftmp
 		f = ftmp
+		if !f.IsValid() {
+			log.Printf("Skipping unknown field %q", field)
+		}
 	}
-	f.setValue(&f.Value, value)
+	if f.IsValid() {
+		f.setValue(&f.Value, value)
+	}
 }
 
 // MakeCopy returns a pointer to a copy of the reflected object.

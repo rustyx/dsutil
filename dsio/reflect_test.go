@@ -40,6 +40,7 @@ func TestReflector(t *testing.T) {
 	r.Set("U", uint32(4))
 	r.Set("U", uint16(3))
 	r.Set("U", uint8(2))
+	r.Set("Eh", 2)
 	r.Set("T", &B{"x"})
 	a := r.MakeCopy().(*A)
 	require.Equal(t, 1, a.P)
