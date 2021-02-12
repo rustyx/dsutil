@@ -76,6 +76,7 @@ func printUsageAndDie(msg string) {
     delete                     - delete records from DataStore
     set <field> <type> <value> - update records in DataStore (type is: string, int, double)
     convert <in> <out>         - convert exported records from JSON to Go object notation
+  Note: <filename> ending with ".gz" will be automatically g(un)zipped
 `)
 	flag.PrintDefaults()
 	os.Exit(1)
@@ -109,7 +110,7 @@ func ensureRequiredArguments() {
 
 func cmdExport() {
 	ensureRequiredArguments()
-	outfile, err := os.OpenFile(flag.Args()[1], os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	outfile, err := openForWriting(flag.Args()[1])
 	check(err, flag.Args()[1])
 	defer outfile.Close()
 	ds := connectDS()
@@ -154,7 +155,7 @@ func cmdImport() {
 }
 
 func importFile(filename string) {
-	infile, err := os.Open(filename)
+	infile, err := openForReading(filename)
 	check(err, filename)
 	defer infile.Close()
 	ds := connectDS()
@@ -297,7 +298,7 @@ func cmdDelete() {
 }
 
 func deleteFromFile(filename string, ds *datastore.Client) {
-	infile, err := os.Open(filename)
+	infile, err := openForReading(filename)
 	check(err, filename)
 	defer infile.Close()
 	log.Printf("Deleting entities from file %s", filename)
@@ -335,10 +336,10 @@ func cmdConvert() {
 	if len(flag.Args()) != 3 {
 		printUsageAndDie("convert arguments should be <in> <out>\n")
 	}
-	in, err := os.Open(flag.Args()[1])
+	in, err := openForReading(flag.Args()[1])
 	check(err, flag.Args()[1])
 	defer in.Close()
-	out, err := os.OpenFile(flag.Args()[2], os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	out, err := openForWriting(flag.Args()[2])
 	check(err, flag.Args()[2])
 	defer out.Close()
 	rbuf := bufio.NewScanner(in)
