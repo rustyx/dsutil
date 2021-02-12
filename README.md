@@ -19,6 +19,7 @@ dsutil [options] command <args>
     delete                     - delete records from DataStore
     set <field> <type> <value> - update records in DataStore (type is: string, int, double)
     convert <in> <out>         - convert exported records from JSON to Go object notation
+  Note: <filename> ending with ".gz" will be automatically g(un)zipped
 
   -project string
     	Google Cloud project name (deduced if not provided)

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"reflect"
 )
 
@@ -25,7 +24,7 @@ type ImportFuncType func(kind string, rows []interface{}) error
 
 // ImportFileReflect imports a given .ds file using the provided type and import function.
 func ImportFileReflect(filename string, modelMap []ModelMapping) error {
-	infile, err := os.Open(filename)
+	infile, err := OpenForReading(filename)
 	if err != nil {
 		return err
 	}

@@ -1,4 +1,4 @@
-package main
+package dsio
 
 import (
 	"compress/gzip"
@@ -12,7 +12,8 @@ type gzipReader struct {
 	file io.ReadCloser
 }
 
-func openForReading(filename string) (io.ReadCloser, error) {
+// OpenForReading opens a file for reading, seamlessly un-gzipping if needed.
+func OpenForReading(filename string) (io.ReadCloser, error) {
 	infile, err := os.Open(filename)
 	if err != nil {
 		return infile, err
@@ -42,7 +43,8 @@ type gzipWriter struct {
 	file io.WriteCloser
 }
 
-func openForWriting(filename string) (io.WriteCloser, error) {
+// OpenForWriting opens a file for writing, seamlessly gzipping if needed.
+func OpenForWriting(filename string) (io.WriteCloser, error) {
 	infile, err := os.OpenFile(filename, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
 	if err != nil {
 		return infile, err

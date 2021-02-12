@@ -110,7 +110,7 @@ func ensureRequiredArguments() {
 
 func cmdExport() {
 	ensureRequiredArguments()
-	outfile, err := openForWriting(flag.Args()[1])
+	outfile, err := dsio.OpenForWriting(flag.Args()[1])
 	check(err, flag.Args()[1])
 	defer outfile.Close()
 	ds := connectDS()
@@ -155,7 +155,7 @@ func cmdImport() {
 }
 
 func importFile(filename string) {
-	infile, err := openForReading(filename)
+	infile, err := dsio.OpenForReading(filename)
 	check(err, filename)
 	defer infile.Close()
 	ds := connectDS()
@@ -298,7 +298,7 @@ func cmdDelete() {
 }
 
 func deleteFromFile(filename string, ds *datastore.Client) {
-	infile, err := openForReading(filename)
+	infile, err := dsio.OpenForReading(filename)
 	check(err, filename)
 	defer infile.Close()
 	log.Printf("Deleting entities from file %s", filename)
@@ -336,10 +336,10 @@ func cmdConvert() {
 	if len(flag.Args()) != 3 {
 		printUsageAndDie("convert arguments should be <in> <out>\n")
 	}
-	in, err := openForReading(flag.Args()[1])
+	in, err := dsio.OpenForReading(flag.Args()[1])
 	check(err, flag.Args()[1])
 	defer in.Close()
-	out, err := openForWriting(flag.Args()[2])
+	out, err := dsio.OpenForWriting(flag.Args()[2])
 	check(err, flag.Args()[2])
 	defer out.Close()
 	rbuf := bufio.NewScanner(in)
