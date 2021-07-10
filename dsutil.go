@@ -99,13 +99,23 @@ func ensureRequiredArguments() {
 		printUsageAndDie("Missing required argument <filename>\n")
 	case len(flag.Args()) > 2 && cmd == "export":
 		printUsageAndDie("Too many arguments for export command\n")
-	case *filter != "" && *from == "" && *to == "" && *eq == "":
+	case simpleFilter(*filter) && *from == "" && *to == "" && *eq == "":
 		printUsageAndDie("Missing option -from, -to or -eq for -filter\n")
 	case *filter == "" && *from != "":
 		printUsageAndDie("Missing option -filter for -from\n")
 	case *filter == "" && *to != "":
 		printUsageAndDie("Missing option -filter for -to\n")
 	}
+}
+
+var filterExprRe = regexp.MustCompile(`\b(\w+)\s*(?:(>=?|<=?|!?=)\s*(\S+))?\b`)
+
+func simpleFilter(s string) bool {
+	m := filterExprRe.FindAllStringSubmatch(s, -1)
+	if m == nil || len(m) > 1 {
+		return false
+	}
+	return m[0][2] == "" && m[0][3] == ""
 }
 
 func cmdExport() {
@@ -116,14 +126,21 @@ func cmdExport() {
 	ds := connectDS()
 	defer ds.Close()
 	q := datastore.NewQuery(*kind)
-	if *from != "" {
-		q = q.Filter(fmt.Sprintf("%s>=", *filter), *from)
-	}
-	if *to != "" {
-		q = q.Filter(fmt.Sprintf("%s<", *filter), *to)
-	}
-	if *eq != "" {
-		q = q.Filter(fmt.Sprintf("%s=", *filter), *eq)
+	if simpleFilter(*filter) {
+		if *from != "" {
+			q = q.Filter(fmt.Sprintf("%s>=", *filter), *from)
+		}
+		if *to != "" {
+			q = q.Filter(fmt.Sprintf("%s<", *filter), *to)
+		}
+		if *eq != "" {
+			q = q.Filter(fmt.Sprintf("%s=", *filter), *eq)
+		}
+	} else {
+		m := filterExprRe.FindAllStringSubmatch(*filter, -1)
+		for _, flt := range m {
+			q = q.Filter(flt[1]+flt[2], flt[3])
+		}
 	}
 	if *order != "" {
 		if *order == "1" {
@@ -270,6 +287,17 @@ func cmdDelete() {
 	if *eq != "" {
 		log.Printf("where %s = %v", *filter, *eq)
 		q = q.Filter(fmt.Sprintf("%s=", *filter), *eq)
+	}
+	if *order != "" {
+		if *order == "1" {
+			*order = *filter
+		} else if *order == "-1" {
+			*order = "-" + *filter
+		}
+		q = q.Order(*order)
+	}
+	if *limit != 0 {
+		q = q.Limit(*limit)
 	}
 	q.KeysOnly()
 	it := ds.Run(context.Background(), q)
