@@ -1,6 +1,6 @@
 ## dsutil - Google Cloud DataStore import/export utilities
 
-[![Build Status](https://travis-ci.com/rustyx/dsutil.svg?branch=master)](https://travis-ci.com/rustyx/dsutil)
+[![Build Status](https://app.travis-ci.com/rustyx/dsutil.svg?token=yyneiMmW2WmpN8XP4VXe&branch=master)](https://app.travis-ci.com/rustyx/dsutil)
 
 ### Installing
 
