@@ -1,10 +1,10 @@
 language: go
 go:
-  - 1.14.x
+  - 1.21.x
 install:
   - go mod download
 script:
   - go build -ldflags="-s -w"
-  - go test ./...
+  - go test -race ./...
 notifications:
   email: false
