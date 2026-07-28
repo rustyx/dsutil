@@ -12,7 +12,7 @@ type ModelMapping struct {
 	// DataStore entity kind (type name).
 	Kind string
 	// TypePtr must be a pointer to a struct of the desired type.
-	TypePtr interface{}
+	TypePtr any
 	// ImportFunc will be called with a slice of pointers to objects of the given type.
 	ImportFunc ImportFuncType
 	// BatchSize defines the desired number of elements for a single ImportFunc call.
@@ -20,7 +20,7 @@ type ModelMapping struct {
 }
 
 // ImportFuncType is the type of the import callback.
-type ImportFuncType func(kind string, rows []interface{}) error
+type ImportFuncType func(kind string, rows []any) error
 
 // ImportFileReflect imports a given .ds file using the provided type and import function.
 func ImportFileReflect(filename string, modelMap []ModelMapping) error {
@@ -40,7 +40,7 @@ func ImportStreamReflect(r io.Reader, modelMap []ModelMapping) (err error) {
 	var tmp *Reflector
 	go func() {
 		defer close(errCh)
-		var rows []interface{}
+		var rows []any
 		for e := range outCh {
 			if tmp == nil {
 				for _, m := range modelMap {
@@ -95,7 +95,7 @@ type refField struct {
 
 // NewReflector returns a new instance of Reflector.
 // Typical use-case flow: r.Reset(), r.Set(), r.Set() ..., r.MakeCopy()
-func NewReflector(typePtr interface{}) *Reflector {
+func NewReflector(typePtr any) *Reflector {
 	typ := reflect.TypeOf(typePtr).Elem()
 	tmpptr := reflect.New(typ)
 	return &Reflector{
@@ -112,7 +112,7 @@ func (r *Reflector) Reset() {
 }
 
 // Set sets a property in the reflected object.
-func (r *Reflector) Set(field string, value interface{}) {
+func (r *Reflector) Set(field string, value any) {
 	f, ok := r.fields[field]
 	if !ok {
 		ftmp := r.makeRefField(field)
@@ -128,7 +128,7 @@ func (r *Reflector) Set(field string, value interface{}) {
 }
 
 // MakeCopy returns a pointer to a copy of the reflected object.
-func (r *Reflector) MakeCopy() interface{} {
+func (r *Reflector) MakeCopy() any {
 	vptr := reflect.New(r.typ)
 	vptr.Elem().Set(r.tmp)
 	return vptr.Interface()
@@ -155,9 +155,9 @@ func (r *Reflector) makeRefField(name string) *refField {
 	return f
 }
 
-type setOp func(f *reflect.Value, value interface{})
+type setOp func(f *reflect.Value, value any)
 
-func setBool(f *reflect.Value, value interface{}) {
+func setBool(f *reflect.Value, value any) {
 	if v, ok := value.(bool); ok {
 		f.SetBool(v)
 		return
@@ -166,7 +166,7 @@ func setBool(f *reflect.Value, value interface{}) {
 	f.Set(v)
 }
 
-func setInt(f *reflect.Value, value interface{}) {
+func setInt(f *reflect.Value, value any) {
 	if v, ok := value.(int); ok {
 		f.SetInt(int64(v))
 	} else if v, ok := value.(int64); ok {
@@ -191,7 +191,7 @@ func setInt(f *reflect.Value, value interface{}) {
 	}
 }
 
-func setUInt(f *reflect.Value, value interface{}) {
+func setUInt(f *reflect.Value, value any) {
 	if v, ok := value.(uint64); ok {
 		if v != 0 {
 			f.SetUint(v)
@@ -214,7 +214,7 @@ func setUInt(f *reflect.Value, value interface{}) {
 	}
 }
 
-func setFloat(f *reflect.Value, value interface{}) {
+func setFloat(f *reflect.Value, value any) {
 	if v, ok := value.(float64); ok {
 		if v != 0 {
 			f.SetFloat(v)
@@ -229,7 +229,7 @@ func setFloat(f *reflect.Value, value interface{}) {
 	}
 }
 
-func setString(f *reflect.Value, value interface{}) {
+func setString(f *reflect.Value, value any) {
 	if str, ok := value.(string); ok {
 		if str != "" {
 			f.SetString(str)
@@ -240,7 +240,7 @@ func setString(f *reflect.Value, value interface{}) {
 	}
 }
 
-func setAny(f *reflect.Value, value interface{}) {
+func setAny(f *reflect.Value, value any) {
 	v := reflect.ValueOf(value).Convert(f.Type())
 	f.Set(v)
 }

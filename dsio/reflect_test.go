@@ -59,7 +59,7 @@ func TestReflector(t *testing.T) {
 }
 
 func BenchmarkBaseline(b *testing.B) {
-	ch := make(chan interface{}, 128)
+	ch := make(chan any, 128)
 	defer close(ch)
 	go sink(ch)
 	for i := 0; i < b.N; i++ {
@@ -75,7 +75,7 @@ func BenchmarkBaseline(b *testing.B) {
 }
 
 func BenchmarkReflect(b *testing.B) {
-	ch := make(chan interface{}, 128)
+	ch := make(chan any, 128)
 	defer close(ch)
 	go sink(ch)
 	t := reflect.ValueOf(&A{}).Elem()
@@ -93,7 +93,7 @@ func BenchmarkReflect(b *testing.B) {
 }
 
 func BenchmarkReflector(b *testing.B) {
-	ch := make(chan interface{}, 128)
+	ch := make(chan any, 128)
 	defer close(ch)
 	go sink(ch)
 	r := NewReflector(&A{})
@@ -110,7 +110,7 @@ func BenchmarkReflector(b *testing.B) {
 }
 
 // to prevent optimization of unused value
-func sink(ch chan interface{}) {
+func sink(ch chan any) {
 	for range ch {
 	}
 }

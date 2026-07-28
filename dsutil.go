@@ -199,7 +199,7 @@ func cmdSet() {
 	}
 	var err error
 	key, valueType, valueStr := flag.Args()[1], flag.Args()[2], flag.Args()[3]
-	var value interface{}
+	var value any
 	switch valueType {
 	case "string":
 		value = valueStr

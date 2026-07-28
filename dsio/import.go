@@ -147,7 +147,7 @@ type jsonRowReader struct {
 
 type valueWrapper struct { // implements json.Unmarshaler
 	typ   string
-	value interface{}
+	value any
 }
 
 func (v *valueWrapper) UnmarshalJSON(b []byte) (err error) {

@@ -100,7 +100,7 @@ func Marshal(inCh <-chan Entity, outCh chan<- []byte, errCh chan<- error) {
 				row.Row = append(row.Row, value)
 			} else {
 				if f.idx > len(row.Row) {
-					row.Row = append(row.Row, make([]interface{}, f.idx-len(row.Row)+1)...)
+					row.Row = append(row.Row, make([]any, f.idx-len(row.Row)+1)...)
 				}
 				row.Row[f.idx] = value
 			}
@@ -122,7 +122,7 @@ func Marshal(inCh <-chan Entity, outCh chan<- []byte, errCh chan<- error) {
 	}
 }
 
-func prepareForMarshal(value interface{}) interface{} {
+func prepareForMarshal(value any) any {
 	tm, ok := value.(time.Time)
 	if ok {
 		return tm.UTC().Format("2006-01-02T15:04:05.000Z") // DataStore does not store timezone
@@ -143,6 +143,6 @@ type jsonFields struct {
 }
 
 type jsonRow struct {
-	Key string        `json:"k"`
-	Row []interface{} `json:"d"`
+	Key string `json:"k"`
+	Row []any  `json:"d"`
 }
